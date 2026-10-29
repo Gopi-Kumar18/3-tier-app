@@ -4,19 +4,28 @@ services:
     build:
       context: frontend/
     image: frontend-image
+    # Published on the App EC2's host network — the separate
+    # Reverse-Proxy EC2 reaches this over the VPC (there's no shared
+    # Docker network across EC2 instances). The real public-vs-private
+    # boundary lives in AWS: the App EC2 has no public IP, and its
+    # security group only allows inbound 8080/3500 from the
+    # Reverse-Proxy EC2's security group — not from 0.0.0.0/0.
     ports:
       - "8080:8080"
     environment:
-      # Resolved into env-config.js at container start — never baked
-      # into the built JS bundle. Point this at the reverse-proxy's
-      # public address, not at a container hostname (the browser, not
-      # this container, makes the API calls).
+      # Resolved into env-config.js at container start — a relative
+      # path, not a host:port, so the browser always calls whatever
+      # origin served the page (the reverse-proxy EC2), which routes
+      # /api/* on to the backend. Never bypassed directly.
       - API_BASE_URL=${API_BASE_URL}
     networks:
       - fe-net
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8080/"]
+      # 127.0.0.1, not localhost — nginx's `listen 8080;` is IPv4-only,
+      # and `localhost` can resolve to ::1 first, giving a false
+      # "connection refused" unhealthy status.
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -27,6 +36,9 @@ services:
     build:
       context: backend/
     image: backend-image
+    # Published on the App EC2's host network for the same reason as
+    # frontend above — restricted by AWS security group, not Docker
+    # network membership.
     ports:
       - "3500:3500"
     env_file:
@@ -39,7 +51,7 @@ services:
       - db-net
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3500/health"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3500/health"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -55,6 +67,7 @@ services:
       - MYSQL_DATABASE=${MYSQL_DATABASE}
     volumes:
       - mysql-data:/var/lib/mysql
+      - ./db/init:/docker-entrypoint-initdb.d:ro
     networks:
       - db-net
     restart: unless-stopped
@@ -74,12 +87,12 @@ volumes:
 networks:
   # One dedicated bridge network per tier. Docker only lets containers
   # reach each other if they share a network, so this is real
-  # micro-segmentation, not just naming: frontend can never reach db
-  # or backend via the Docker network (it doesn't need to — the
-  # browser calls the API directly via API_BASE_URL, not this
-  # container); backend bridges be-net (reachable from the host/
-  # reverse-proxy EC2) and db-net (reachable from the db container);
-  # db-net only ever has backend and db on it.
+  # micro-segmentation even on a single EC2: frontend sits on fe-net
+  # only (no path to backend or db via the Docker network — the
+  # browser calls the API directly over the published host port, not
+  # this container); backend bridges be-net (its own published host
+  # port) and db-net (reaches db); db-net only ever has backend and db
+  # on it, and db publishes no host port at all.
   fe-net:
     name: fe-net
     driver: bridge

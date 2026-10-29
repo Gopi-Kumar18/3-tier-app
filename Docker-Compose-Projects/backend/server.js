@@ -67,13 +67,23 @@ app.get('/', async (req, res) => {
 });
 
 app.get('/student', async (req, res) => {
-    const [data] = await db.query("SELECT * FROM student");
-    return res.json(data);
+    try {
+        const [data] = await db.query("SELECT * FROM student");
+        return res.json(data);
+    } catch (error) {
+        console.error('Error fetching student data:', error);
+        return res.status(500).json({ error: 'Error fetching student data' });
+    }
 });
 
 app.get('/teacher', async (req, res) => {
-    const [data] = await db.query("SELECT * FROM teacher");
-    return res.json(data);
+    try {
+        const [data] = await db.query("SELECT * FROM teacher");
+        return res.json(data);
+    } catch (error) {
+        console.error('Error fetching teacher data:', error);
+        return res.status(500).json({ error: 'Error fetching teacher data' });
+    }
 });
 
 app.post('/addstudent', async (req, res) => {

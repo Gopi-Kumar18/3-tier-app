@@ -1,0 +1,36 @@
+# Draft reference for the real Reverse-Proxy EC2, carried over from
+# the local-only proxy container used to prove the routing + "single
+# entry point" behavior during local testing (Docker-Compose-Projects
+# no longer runs this — it was removed once that was verified).
+#
+# APP_UPSTREAM_HOST must be the App EC2's private IP (or an internal
+# DNS name) — "backend"/"frontend" Docker service names only resolve
+# inside the App EC2's own compose network, not from this box.
+# ${APP_UPSTREAM_HOST} is substituted by the official nginx image's
+# built-in envsubst-on-templates entrypoint feature at container
+# start (nothing custom needed) — set it as an env var when running
+# this container on the Reverse-Proxy EC2.
+#
+# Still to decide during the Terraform/EC2 setup: whether this runs
+# as a container on that EC2 (as drafted here) or as nginx installed
+# natively, and the real listen port (80/443 with TLS, vs the 8080
+# used for local testing under nginx-unprivileged).
+server {
+    listen 8080;
+
+    location /api/ {
+        proxy_pass http://${APP_UPSTREAM_HOST}:3500/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location / {
+        proxy_pass http://${APP_UPSTREAM_HOST}:8080/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}

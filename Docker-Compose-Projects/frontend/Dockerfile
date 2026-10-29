@@ -13,7 +13,8 @@ RUN npm run build
 # user rather than root).
 FROM nginxinc/nginx-unprivileged:1.27-alpine
 
-COPY --from=build /app/build /usr/share/nginx/html
+COPY --from=build --chown=nginx:nginx /app/build /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 # Runs automatically before nginx starts (the base image's entrypoint
 # sources every /docker-entrypoint.d/*.sh script). Rewrites
@@ -27,5 +28,7 @@ USER nginx
 
 EXPOSE 8080
 
+# 127.0.0.1, not localhost — nginx's `listen 8080;` is IPv4-only, and
+# `localhost` can resolve to ::1 first, giving a false unhealthy status.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD wget -qO- http://localhost:8080/ || exit 1
+  CMD wget -qO- http://127.0.0.1:8080/ || exit 1
