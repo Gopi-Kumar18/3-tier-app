@@ -1,0 +1,38 @@
+# Root-level safety net — catches secrets dropped at the repo root.
+# Each app folder (frontend/, backend/) also has its own .gitignore for
+# its own build artifacts; this one guards anything outside those.
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.p12
+secrets/
+credentials.json
+
+# Terraform (infra work landing next)
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
+crash.*.log
+
+# OS / editor junk
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Logs
+*.log
+npm-debug.log*
+
+# others
+/raw_images
+/.codemie/*

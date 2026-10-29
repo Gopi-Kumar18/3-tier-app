@@ -1,0 +1,91 @@
+services:
+  frontend:
+    container_name: frontend
+    build:
+      context: frontend/
+    image: frontend-image
+    ports:
+      - "8080:8080"
+    environment:
+      # Resolved into env-config.js at container start — never baked
+      # into the built JS bundle. Point this at the reverse-proxy's
+      # public address, not at a container hostname (the browser, not
+      # this container, makes the API calls).
+      - API_BASE_URL=${API_BASE_URL}
+    networks:
+      - fe-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  backend:
+    container_name: backend
+    build:
+      context: backend/
+    image: backend-image
+    ports:
+      - "3500:3500"
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - be-net
+      - db-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3500/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  db:
+    container_name: mysql-container
+    image: mysql:8.4
+    # No ports published to the host — only the backend (sharing
+    # db-net) can resolve/reach this service at all.
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+    volumes:
+      - mysql-data:/var/lib/mysql
+    networks:
+      - db-net
+    restart: unless-stopped
+    healthcheck:
+      # CMD-SHELL (not exec-form CMD) so $$MYSQL_ROOT_PASSWORD is
+      # actually expanded by a shell from the container's own env,
+      # rather than passed to mysqladmin as a literal string.
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$$MYSQL_ROOT_PASSWORD"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+volumes:
+  mysql-data:
+
+networks:
+  # One dedicated bridge network per tier. Docker only lets containers
+  # reach each other if they share a network, so this is real
+  # micro-segmentation, not just naming: frontend can never reach db
+  # or backend via the Docker network (it doesn't need to — the
+  # browser calls the API directly via API_BASE_URL, not this
+  # container); backend bridges be-net (reachable from the host/
+  # reverse-proxy EC2) and db-net (reachable from the db container);
+  # db-net only ever has backend and db on it.
+  fe-net:
+    name: fe-net
+    driver: bridge
+  be-net:
+    name: be-net
+    driver: bridge
+  db-net:
+    name: db-net
+    driver: bridge
